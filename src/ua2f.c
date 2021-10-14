@@ -14,7 +14,7 @@
 #include <strings.h>
 #include <unistd.h>
 #include <time.h>
-#include <sys/wait.h>
+#include <wait.h>
 #include <syslog.h>
 #include <signal.h>
 #include <arpa/inet.h>
@@ -39,7 +39,7 @@ static long long UAcount = 0;
 static long long tcpcount = 0;
 static long long UAmark = 0;
 static long long noUAmark = 0;
-static long long httpcount = 4;
+static long long oldhttpcount = 4;
 
 static time_t start_t, current_t;
 
@@ -194,9 +194,12 @@ static int queue_cb(const struct nlmsghdr *nlh, void *data) {
     bool noUA = false;
     char *ip;
     uint16_t port = 0;
+
     char addcmd[50];
 
+
     debugflag = 0;
+
 
     if (nfq_nlmsg_parse(nlh, attr) < 0) {
         perror("problems parsing");
@@ -282,27 +285,34 @@ static int queue_cb(const struct nlmsghdr *nlh, void *data) {
     tcppklen = nfq_tcp_get_payload_len(tcppkhdl, pktb); //获取 tcp长度
 
     if (tcppkpayload) {
-        char *uapointer = memncasemem(tcppkpayload, tcppklen, "\r\nUser-Agent: ", 14); // 找到指向 \r 的指针
+        char *uapointer = memncasemem(tcppkpayload, tcppklen, "\r\nUser-Agent:", 13);
+/*        if (uapointer) {
+            uapointer = memmem(tcppkpayload, tcppklen, "\r\nUser-Agent:", 13);
+            if (!uapointer) {
+                uapointer = memmem(tcppkpayload, tcppklen, "\r\nUser-agent:", 13);
+            }
+        } else {
+            uapointer = memmem(tcppkpayload, tcppklen, "\r\nuser-agent:", 13);
+        }*/
 
         if (uapointer) {
-            uaoffset = uapointer - tcppkpayload + 14; // 应该指向 UA 的第一个字符
+            uaoffset = uapointer - tcppkpayload + 14;
 
             if (uaoffset >= tcppklen) {
-                syslog(LOG_WARNING, "User-Agent position overflow, may cause by TCP Segment Reassembled.");
+                syslog(LOG_WARNING, "Offset overflow");
                 pktb_free(pktb);
                 return MNL_CB_OK;
             }
 
-            char *uaStartPointer = uapointer + 14;
             for (int i = 0; i < tcppklen - uaoffset - 2; ++i) {
-                if (*(uaStartPointer + i) == '\r') {
+                if (*(uapointer + 14 + i) == '\r') {
                     ualength = i;
                     break;
                 }
             }
 
             if (ualength + uaoffset > tcppklen) {
-                syslog(LOG_ERR, "UA overflow, this is an unexpected error."); // 不应该出现，出现说明指针越界了
+                syslog(LOG_WARNING, "UA overflow");
                 pktb_free(pktb);
                 return MNL_CB_OK;
             }
@@ -311,7 +321,6 @@ static int queue_cb(const struct nlmsghdr *nlh, void *data) {
                 UAcount++; //记录修改包的数量
                 noUA = false;
             } else {
-                syslog(LOG_ERR, "Mangle packet failed.");
                 pktb_free(pktb);
                 return MNL_CB_ERROR;
             }
@@ -329,8 +338,8 @@ static int queue_cb(const struct nlmsghdr *nlh, void *data) {
 
     debugflag++; //flag6 / 10
 
-    if (UAcount / httpcount == 2 || UAcount - httpcount >= 8192) {
-        httpcount = UAcount;
+    if (UAcount / oldhttpcount == 2 || UAcount - oldhttpcount >= 8192) {
+        oldhttpcount = UAcount;
         current_t = time(NULL);
         syslog(LOG_INFO,
                "UA2F has handled %lld ua http, %lld tcp. Set %lld mark and %lld noUA mark in %s",
@@ -386,7 +395,7 @@ int main(int argc, char *argv[]) {
             }
         }
         errcount++;
-        if (errcount > 10) {
+        if (errcount > 50) {
             syslog(LOG_ERR, "Meet too many fatal error, no longer try to recover.");
             syslog(LOG_ERR, "Exit at breakpoint 3.");
             exit(EXIT_FAILURE);
@@ -433,9 +442,9 @@ int main(int argc, char *argv[]) {
     }
 
     str = malloc(sizeof_buf);
-    memset(str, 'F', sizeof_buf);
-    memcpy(str, "Mozilla/4.0 (compatible; MSIE 5.00; Windows 98)", 47);
-
+    memset(str, 'C', sizeof_buf);
+    memcpy(str,"Mozilla/4.0 (compatible; MSIE 5.00; Windows 98)",47);
+    
     nlh = nfq_nlmsg_put(buf, NFQNL_MSG_CONFIG, queue_number);
     nfq_nlmsg_cfg_put_cmd(nlh, AF_INET, NFQNL_CFG_CMD_BIND);
 
