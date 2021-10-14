@@ -43,9 +43,12 @@ gen
 
 ### C template
 # Prerequisites
+*.d
 
 # Object files
+*.o
 *.ko
+*.obj
 *.elf
 
 # Linker output
@@ -53,6 +56,15 @@ gen
 *.map
 *.exp
 
+# Precompiled Headers
+*.gch
+*.pch
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
 
 # Shared objects (inc. Windows DLLs)
 *.so.*
@@ -80,6 +92,3 @@ dkms.conf
 
 # Project exclude paths
 /cmake-build-*/
-
-test/
-
