@@ -442,8 +442,8 @@ int main(int argc, char *argv[]) {
     }
 
     str = malloc(sizeof_buf);
-    memset(str, 'y', sizeof_buf);
-    memcpy(str,"Mozilla/5.0 (Windows NT 10.0; Win64; x64)",41);
+    memset(str, ' ', sizeof_buf);
+    memcpy(str,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",80);
     
     nlh = nfq_nlmsg_put(buf, NFQNL_MSG_CONFIG, queue_number);
     nfq_nlmsg_cfg_put_cmd(nlh, AF_INET, NFQNL_CFG_CMD_BIND);
