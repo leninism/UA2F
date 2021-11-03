@@ -285,34 +285,27 @@ static int queue_cb(const struct nlmsghdr *nlh, void *data) {
     tcppklen = nfq_tcp_get_payload_len(tcppkhdl, pktb); //获取 tcp长度
 
     if (tcppkpayload) {
-        char *uapointer = memncasemem(tcppkpayload, tcppklen, "\r\nUser-Agent:", 13);
-/*        if (uapointer) {
-            uapointer = memmem(tcppkpayload, tcppklen, "\r\nUser-Agent:", 13);
-            if (!uapointer) {
-                uapointer = memmem(tcppkpayload, tcppklen, "\r\nUser-agent:", 13);
-            }
-        } else {
-            uapointer = memmem(tcppkpayload, tcppklen, "\r\nuser-agent:", 13);
-        }*/
+      char *uapointer = memncasemem(tcppkpayload, tcppklen, "\r\nUser-Agent: ", 14); // 找到指向 \r 的指针
 
         if (uapointer) {
             uaoffset = uapointer - tcppkpayload + 14;
 
             if (uaoffset >= tcppklen) {
-                syslog(LOG_WARNING, "Offset overflow");
+                syslog(LOG_WARNING, "User-Agent position overflow, may cause by TCP Segment Reassembled.");
                 pktb_free(pktb);
                 return MNL_CB_OK;
             }
-
+        
+            char *uaStartPointer = uapointer + 14;
             for (int i = 0; i < tcppklen - uaoffset - 2; ++i) {
-                if (*(uapointer + 14 + i) == '\r') {
+                 if (*(uaStartPointer + i) == '\r') {
                     ualength = i;
                     break;
                 }
             }
 
             if (ualength + uaoffset > tcppklen) {
-                syslog(LOG_WARNING, "UA overflow");
+                syslog(LOG_ERR, "UA overflow, this is an unexpected error."); // 不应该出现，出现说明指针越界了
                 pktb_free(pktb);
                 return MNL_CB_OK;
             }
@@ -321,6 +314,7 @@ static int queue_cb(const struct nlmsghdr *nlh, void *data) {
                 UAcount++; //记录修改包的数量
                 noUA = false;
             } else {
+                syslog(LOG_ERR, "Mangle packet failed.");
                 pktb_free(pktb);
                 return MNL_CB_ERROR;
             }
@@ -443,7 +437,7 @@ int main(int argc, char *argv[]) {
 
     str = malloc(sizeof_buf);
     memset(str, ' ', sizeof_buf);
-    memcpy(str,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",80);
+    memcpy(str, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)", 80);
     
     nlh = nfq_nlmsg_put(buf, NFQNL_MSG_CONFIG, queue_number);
     nfq_nlmsg_cfg_put_cmd(nlh, AF_INET, NFQNL_CFG_CMD_BIND);
